@@ -1,0 +1,5 @@
+Steward.xcodeproj/
+DerivedData/
+build/
+*.ipa
+.DS_Store

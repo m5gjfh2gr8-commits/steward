@@ -1,0 +1,59 @@
+# systemd-Dienst, damit das Backend beim Hochfahren des Heimservers automatisch startet
+#
+# Einrichten:
+#   sudo cp steward.service /etc/systemd/system/
+#   sudo mkdir -p /etc/steward /opt/steward/daten
+#   sudo chown steward:steward /opt/steward/daten
+#   sudo cp .env.example /etc/steward/steward.env     # dann ausfuellen
+#   -> darin STEWARD_DB_PFAD=/opt/steward/daten/steward.db setzen
+#   -> und unten bei ExecStart die eigene Tailscale-IP eintragen (tailscale ip -4)
+#   sudo chown root:steward /etc/steward/steward.env
+#   sudo chmod 640 /etc/steward/steward.env
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now steward
+#
+# Nachschauen:  sudo systemctl status steward
+# Logs:         journalctl -u steward -f
+
+[Unit]
+Description=Steward Backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=steward
+Group=steward
+WorkingDirectory=/opt/steward/backend
+
+# Der API-Key und der Anthropic-Key liegen hier, nicht im Projektordner
+EnvironmentFile=/etc/steward/steward.env
+
+# Nur ueber Tailscale erreichbar - eigene Tailnet-IP eintragen (tailscale ip -4),
+# dann hoert der Dienst nicht im Heim-WLAN mit
+# Der Platzhalter ist absichtlich kein gueltiger Wert: so scheitert der Start mit
+# klarer Meldung, statt still auf der falschen Adresse zu lauschen
+ExecStart=/opt/steward/backend/.venv/bin/uvicorn app.main:anwendung --host TAILSCALE-IP-EINSETZEN --port 8000
+
+Restart=always
+RestartSec=5
+
+# --- Haertung: ein Fehler im Backend soll nicht am System herumschreiben koennen ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Der einzige Ort, an dem geschrieben werden darf - dort liegt die Datenbank
+# (inklusive der WAL-Dateien, die SQLite daneben anlegt)
+ReadWritePaths=/opt/steward/daten
+
+[Install]
+WantedBy=multi-user.target

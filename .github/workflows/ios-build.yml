@@ -1,0 +1,61 @@
+# Baut die iOS-App in der Cloud, damit kein eigener Mac noetig ist
+# Ergebnis ist eine unsignierte .ipa - signiert wird erst beim Installieren durch SideStore
+#
+# Laeuft bei jedem Push auf main und wenn man den Workflow von Hand startet
+# macOS-Runner-Minuten sind bei oeffentlichen Repositories kostenlos
+
+name: iOS Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Code holen
+        uses: actions/checkout@v4
+
+      - name: XcodeGen installieren
+        run: brew install xcodegen
+
+      - name: Xcode-Projekt erzeugen
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: App bauen (ohne Signierung)
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project Steward.xcodeproj \
+            -scheme Steward \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+
+      - name: IPA packen
+        working-directory: ios
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/Steward.app Payload/
+          zip -qry Steward.ipa Payload
+          rm -rf Payload
+          ls -lh Steward.ipa
+
+      - name: IPA als Artefakt hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Steward-ipa
+          path: ios/Steward.ipa
+          retention-days: 30

@@ -1,0 +1,26 @@
+[
+  {
+    "name": "iCloud",
+    "server": "imap.mail.me.com",
+    "port": 993,
+    "benutzer": "deine-apple-id@icloud.com",
+    "passwort": "app-spezifisches-passwort",
+    "ordner": "INBOX"
+  },
+  {
+    "name": "Gmail",
+    "server": "imap.gmail.com",
+    "port": 993,
+    "benutzer": "deine-adresse@gmail.com",
+    "passwort": "app-passwort",
+    "ordner": "INBOX"
+  },
+  {
+    "name": "GMX",
+    "server": "imap.gmx.net",
+    "port": 993,
+    "benutzer": "deine-adresse@gmx.at",
+    "passwort": "passwort",
+    "ordner": "INBOX"
+  }
+]

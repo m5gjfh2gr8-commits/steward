@@ -1,0 +1,24 @@
+# Geheimnisse - duerfen nie ins oeffentliche Repo
+backend/.env
+backend/config/postfaecher.json
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Xcode / Build
+ios/Steward.xcodeproj/
+ios/Info.plist
+ios/build/
+ios/DerivedData/
+*.ipa
+
+.DS_Store
+
+# Alte Claude-Ausgaben, nicht ins Repo
+Claude outputs/
+.env
