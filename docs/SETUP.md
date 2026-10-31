@@ -155,7 +155,7 @@ sudo chmod 640 /etc/steward/steward.env
 
 ```bash
 cd /opt/steward/backend
-sudo -u steward env $(grep -v '^#' /etc/steward/steward.env | xargs) .venv/bin/python -m app.selbsttest
+sudo -u steward bash -c 'set -a; . /etc/steward/steward.env; set +a; .venv/bin/python -m app.selbsttest'
 ```
 
 Der prüft Python-Version, API-Key, Zeitzone, ob die Datenbank am richtigen Ort
@@ -168,7 +168,7 @@ wenn alles grün ist.**
 Wenn du auch den Modellaufruf selbst testen willst (kostet Bruchteile eines Cents):
 
 ```bash
-... -m app.selbsttest --modell
+sudo -u steward bash -c 'set -a; . /etc/steward/steward.env; set +a; .venv/bin/python -m app.selbsttest --modell'
 ```
 
 ---
