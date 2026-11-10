@@ -5,6 +5,7 @@ def test_health_geht_ohne_key(klient):
     antwort = klient.get("/health")
     assert antwort.status_code == 200
     assert antwort.json()["status"] == "ok"
+    assert antwort.json()["version"] != ""
 
 
 def test_ohne_key_kommt_401(klient):
@@ -156,3 +157,10 @@ def test_fehlendes_modell_paket_wird_lesbar(klient, kopf, monkeypatch):
         assert "fehlt" in antwort.json()["detail"]
     finally:
         auswahl.zwischenspeicher_leeren()
+
+
+def test_modulliste_hat_symbol_fuer_die_app(klient, kopf):
+    alle = klient.get("/module", headers=kopf).json()
+
+    for eintrag in alle:
+        assert eintrag["symbol"] != ""

@@ -1,252 +1,156 @@
+import AVFoundation
 import SwiftUI
 
-// Server-Adresse, API-Key, Tagesziele, Interessensprofil und Verbindungsstatus
+// Einstellungen als gruppierte Liste, wie in der iOS-Einstellungen-App
 
 struct EinstellungenAnsicht: View {
     @EnvironmentObject var einstellungen: Einstellungen
 
-    @State private var status: ServerStatus?
-    @State private var statusText = ""
-    @State private var pruefe = false
+    @State private var test: TestErgebnis = TestErgebnis.keins
+    @State private var serverVersion: String = "–"
 
-    @State private var ziele: Tagesziele?
-    @State private var interessen: [Interesse] = []
-    @State private var neuesInteresse = ""
+    private let stimmen: [AVSpeechSynthesisVoice] = Vorlesen.deutscheStimmen()
 
     var body: some View {
         NavigationStack {
             Form {
-                verbindungsAbschnitt
-                zieleAbschnitt
-                interessenAbschnitt
-                erinnerungsAbschnitt
-                infoAbschnitt
-            }
-            .navigationTitle("Einstellungen")
-            .task {
-                await ladenWennMoeglich()
-            }
-        }
-    }
-
-    private var verbindungsAbschnitt: some View {
-        Section {
-            TextField("http://steward:8000", text: $einstellungen.serverAdresse)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-
-            SecureField("API-Key", text: $einstellungen.apiKey)
-
-            Button {
-                Task { await verbindungPruefen() }
-            } label: {
-                if pruefe {
-                    LadeAnzeige(text: "Wird geprueft")
-                } else {
-                    Text("Verbindung pruefen")
+                Section {
+                    LabeledContent("Adresse") {
+                        TextField("name.tailnet.ts.net", text: $einstellungen.serverAdresse)
+                            .multilineTextAlignment(.trailing)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                    }
+                    LabeledContent("Steward-Key") {
+                        SecureField("Pflicht", text: $einstellungen.apiKey)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    Button("Verbindung testen") {
+                        Task {
+                            await testen()
+                        }
+                    }
+                } header: {
+                    Text("Verbindung")
+                } footer: {
+                    TestErgebnisAnzeige(ergebnis: test)
                 }
-            }
 
-            if !statusText.isEmpty {
-                Text(statusText)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("Server")
-        } footer: {
-            Text("Die Adresse ist der Tailscale-Name des Heimservers. Ohne aktives Tailscale am iPhone ist der Server nicht erreichbar.")
-        }
-    }
+                Section {
+                    AkzentAuswahl(auswahl: $einstellungen.akzent)
+                } header: {
+                    Text("Darstellung")
+                } footer: {
+                    Text("Die Akzentfarbe gilt für die ganze App.")
+                }
 
-    @ViewBuilder
-    private var zieleAbschnitt: some View {
-        if let ziele = ziele {
-            Section("Tagesziele") {
-                ZielZeile(titel: "Kalorien", einheit: "kcal", wert: ziele.kcalZiel) { neuerWert in
-                    Task { await zielSpeichern(kcal: neuerWert) }
-                }
-                ZielZeile(titel: "Eiweiss", einheit: "g", wert: ziele.eiweissZielG) { neuerWert in
-                    Task { await zielSpeichern(eiweiss: neuerWert) }
-                }
-                ZielZeile(titel: "Kohlenhydrate", einheit: "g", wert: ziele.kohlenhydrateZielG) { neuerWert in
-                    Task { await zielSpeichern(kohlenhydrate: neuerWert) }
-                }
-                ZielZeile(titel: "Fett", einheit: "g", wert: ziele.fettZielG) { neuerWert in
-                    Task { await zielSpeichern(fett: neuerWert) }
-                }
-                ZielZeile(titel: "Wasser", einheit: "ml", wert: Double(ziele.wasserZielMl)) { neuerWert in
-                    Task { await zielSpeichern(wasser: Int(neuerWert)) }
-                }
-            }
-        }
-    }
+                Section("Vorlesen") {
+                    Picker("Stimme", selection: $einstellungen.vorleseStimme) {
+                        Text("Standard").tag("")
+                        ForEach(stimmen, id: \.identifier) { stimme in
+                            Text(stimme.name + " (" + stimme.language + ")").tag(stimme.identifier)
+                        }
+                    }
 
-    private var interessenAbschnitt: some View {
-        Section {
-            ForEach(interessen) { eintrag in
-                Text(eintrag.stichwort)
-            }
-            .onDelete { stellen in
-                Task { await interesseEntfernen(stellen) }
-            }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Geschwindigkeit")
+                        Slider(value: $einstellungen.vorleseTempo, in: 0.35...0.6) {
+                            Text("Geschwindigkeit")
+                        } minimumValueLabel: {
+                            Image(systemName: "tortoise")
+                        } maximumValueLabel: {
+                            Image(systemName: "hare")
+                        }
+                    }
+                    .padding(.vertical, 4)
 
-            HStack {
-                TextField("Neues Thema", text: $neuesInteresse)
-                Button {
-                    Task { await interesseHinzufuegen() }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                }
-                .disabled(neuesInteresse.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        } header: {
-            Text("Interessen fuer die News")
-        } footer: {
-            Text("Danach filtert das Morning Briefing. Daumen hoch/runter bei einzelnen Meldungen justiert es zusaetzlich nach.")
-        }
-    }
-
-    private var erinnerungsAbschnitt: some View {
-        Section("Trink-Erinnerung") {
-            Toggle("Erinnern wenn laenger nichts eingetragen", isOn: $einstellungen.trinkErinnerungAn)
-                .onChange(of: einstellungen.trinkErinnerungAn) {
-                    if einstellungen.trinkErinnerungAn {
-                        Benachrichtigungen.geteilt.trinkErinnerungPlanen(inStunden: einstellungen.trinkErinnerungStunden)
-                    } else {
-                        Benachrichtigungen.geteilt.trinkErinnerungLoeschen()
+                    Button("Probe hören") {
+                        Vorlesen.geteilt.umschalten(text: "Hallo Lorenz, so klinge ich.")
                     }
                 }
 
-            if einstellungen.trinkErinnerungAn {
-                Stepper("Nach \(einstellungen.trinkErinnerungStunden) Stunden", value: $einstellungen.trinkErinnerungStunden, in: 1...8)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var infoAbschnitt: some View {
-        if let status = status {
-            Section("Server-Info") {
-                LabeledContent("Modell", value: status.llmModellStandard)
-                LabeledContent("Anbieter", value: status.llmAnbieter)
-
-                if status.kalenderEingerichtet {
-                    LabeledContent("Kalender", value: "verbunden")
-                } else {
-                    LabeledContent("Kalender", value: "nicht eingerichtet")
+                Section {
+                    Toggle("Hintergrund-Hinweise", isOn: $einstellungen.hintergrundHinweise)
+                    Toggle("Zähler am App-Symbol", isOn: $einstellungen.zaehlerAmSymbol)
+                } header: {
+                    Text("Benachrichtigungen")
+                } footer: {
+                    Text("Ohne Push-Dienst schaut die App ab und zu im Hintergrund selbst nach. Wann, entscheidet iOS – Hinweise können deshalb verspätet kommen.")
                 }
 
-                LabeledContent("Postfaecher", value: "\(status.postfaecher.count)")
-                LabeledContent("Feeds", value: "\(status.feeds.count)")
+                Section("Info") {
+                    LabeledContent("App-Version", value: appVersion)
+                    LabeledContent("Server-Version", value: serverVersion)
+                }
+            }
+            .navigationTitle("Einstellungen")
+            .task {
+                await versionHolen()
+            }
+            .onChange(of: einstellungen.zaehlerAmSymbol) { _, _ in
+                Task {
+                    let zahl: Int = UserDefaults.standard.integer(forKey: "zuletztBekanntUngelesen")
+                    await Benachrichtigungen.geteilt.zaehlerSetzen(zahl)
+                }
             }
         }
     }
 
-    private func ladenWennMoeglich() async {
-        if !einstellungen.istEingerichtet {
-            return
-        }
+    private var appVersion: String {
+        let info: [String: Any] = Bundle.main.infoDictionary ?? [:]
+        let version: String = info["CFBundleShortVersionString"] as? String ?? "?"
+        let build: String = info["CFBundleVersion"] as? String ?? "?"
+        return version + " (" + build + ")"
+    }
 
+    private func testen() async {
+        test = TestErgebnis.laeuft
+        test = await verbindungPruefen()
+
+        if case .ok(let version) = test {
+            serverVersion = version
+        }
+    }
+
+    private func versionHolen() async {
         do {
-            ziele = try await ApiClient.geteilt.holen("/goals")
-            interessen = try await ApiClient.geteilt.holen("/profile/interests")
-            status = try await ApiClient.geteilt.holen("/status")
+            let gesundheit: Gesundheit = try await ApiClient.geteilt.holen("/health")
+            serverVersion = gesundheit.version ?? "?"
         } catch {
-            statusText = error.localizedDescription
-        }
-    }
-
-    private func verbindungPruefen() async {
-        pruefe = true
-        statusText = ""
-
-        do {
-            status = try await ApiClient.geteilt.holen("/status")
-            statusText = "Passt, Server antwortet"
-            await ladenWennMoeglich()
-        } catch {
-            statusText = error.localizedDescription
-        }
-
-        pruefe = false
-    }
-
-    private func zielSpeichern(kcal: Double? = nil, eiweiss: Double? = nil, kohlenhydrate: Double? = nil, fett: Double? = nil, wasser: Int? = nil) async {
-        var anfrage = ZieleAnfrage()
-        anfrage.kcalZiel = kcal
-        anfrage.eiweissZielG = eiweiss
-        anfrage.kohlenhydrateZielG = kohlenhydrate
-        anfrage.fettZielG = fett
-        anfrage.wasserZielMl = wasser
-
-        do {
-            ziele = try await ApiClient.geteilt.schicken("/goals", koerper: anfrage)
-        } catch {
-            statusText = error.localizedDescription
-        }
-    }
-
-    private func interesseHinzufuegen() async {
-        var stichwoerter: [String] = []
-        for eintrag in interessen {
-            stichwoerter.append(eintrag.stichwort)
-        }
-        stichwoerter.append(neuesInteresse.trimmingCharacters(in: .whitespaces))
-
-        await interessenSpeichern(stichwoerter)
-        neuesInteresse = ""
-    }
-
-    private func interesseEntfernen(_ stellen: IndexSet) async {
-        var stichwoerter: [String] = []
-        var stelle = 0
-        for eintrag in interessen {
-            if !stellen.contains(stelle) {
-                stichwoerter.append(eintrag.stichwort)
-            }
-            stelle = stelle + 1
-        }
-
-        await interessenSpeichern(stichwoerter)
-    }
-
-    private func interessenSpeichern(_ stichwoerter: [String]) async {
-        do {
-            interessen = try await ApiClient.geteilt.schicken("/profile/interests", koerper: InteressenAnfrage(stichwoerter: stichwoerter))
-        } catch {
-            statusText = error.localizedDescription
+            serverVersion = "nicht erreichbar"
         }
     }
 }
 
-struct ZielZeile: View {
-    let titel: String
-    let einheit: String
-    let wert: Double
-    let gespeichert: (Double) -> Void
-
-    @State private var text = ""
+// Eine Reihe runder Farbpunkte, der gewählte hat ein Häkchen
+struct AkzentAuswahl: View {
+    @Binding var auswahl: Akzentfarbe
 
     var body: some View {
-        HStack {
-            Text(titel)
-            Spacer()
-            TextField(einheit, text: $text)
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.trailing)
-                .frame(width: 80)
-                .onSubmit {
-                    if let neuerWert = Double(text) {
-                        gespeichert(neuerWert)
+        HStack(spacing: 0) {
+            ForEach(Akzentfarbe.allCases) { farbe in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        auswahl = farbe
                     }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(farbe.farbe)
+                            .frame(width: 30, height: 30)
+                        if auswahl == farbe {
+                            Image(systemName: "checkmark")
+                                .font(.footnote.weight(.bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44)
                 }
-            Text(einheit)
-                .foregroundStyle(.secondary)
-        }
-        .onAppear {
-            text = String(Int(wert))
+                .buttonStyle(.plain)
+                .accessibilityLabel(farbe.name)
+                .accessibilityAddTraits(auswahl == farbe ? .isSelected : [])
+            }
         }
     }
 }

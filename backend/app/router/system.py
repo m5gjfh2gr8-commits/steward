@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
-from app import planer
+from app import VERSION, planer
 from app.bots import verzeichnis
 from app.config import EINSTELLUNGEN, feeds_laden
 from app.dienste import kosten
@@ -14,8 +14,8 @@ router = APIRouter(tags=["system"])
 
 @router.get("/health")
 def gesundheit():
-    """Ohne API-Key erreichbar, sagt nur dass der Server läuft"""
-    return {"status": "ok", "zeit": jetzt_text()}
+    """Ohne API-Key erreichbar, sagt nur dass der Server läuft und welche Version"""
+    return {"status": "ok", "zeit": jetzt_text(), "version": VERSION}
 
 
 @router.get("/status", dependencies=[Depends(api_key_pruefen)])

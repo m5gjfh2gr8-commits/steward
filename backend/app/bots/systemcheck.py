@@ -26,6 +26,7 @@ class SystemCheck(Modul):
     anzeigename = "Systemcheck"
     beschreibung = "Überwacht die anderen Module, den Plattenplatz und den Token-Verbrauch"
     zeitplan = {"hour": "*", "minute": 5}
+    symbol = "waveform.path.ecg"
     braucht_modell = False
 
     def lauf(self):

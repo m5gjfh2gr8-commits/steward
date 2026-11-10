@@ -61,6 +61,10 @@ class Modul:
     # None = läuft nie von selbst, nur von Hand
     zeitplan = None
 
+    # SF-Symbol-Name, mit dem die App das Modul in der Liste zeigt
+    # Übersicht aller Namen: Apps "SF Symbols" am Mac oder developer.apple.com/sf-symbols
+    symbol = "square.grid.2x2"
+
     # Sagt der Kostenbremse, ob hier Modellaufrufe zu erwarten sind
     braucht_modell = False
 

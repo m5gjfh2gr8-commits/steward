@@ -1,12 +1,13 @@
+import BackgroundTasks
 import Foundation
 import UserNotifications
 
-// Lokale Erinnerungen - laufen komplett am iPhone, kein Server-Push
-// Echte Push-Notifications wuerden das bezahlte Apple Developer Program brauchen,
-// lokale gehen mit der kostenlosen Apple-ID ohne Probleme
+// Lokale Hinweise und der Zähler am App-Symbol
+// Echte Push-Nachrichten bräuchten den bezahlten Apple-Developer-Account - deshalb schaut
+// die App ab und zu im Hintergrund selbst nach. Wann genau, entscheidet iOS.
 
 class Benachrichtigungen {
-    static let geteilt = Benachrichtigungen()
+    static let geteilt: Benachrichtigungen = Benachrichtigungen()
 
     func erlaubnisHolen() async -> Bool {
         do {
@@ -16,65 +17,90 @@ class Benachrichtigungen {
         }
     }
 
-    // Plant eine Erinnerung zu einem Termin/Todo
-    // Eingabe: Kennung (damit man sie spaeter wieder loeschen kann), Text, Zeitpunkt
-    func terminErinnerungPlanen(kennung: String, text: String, zeitpunkt: Date) {
-        if zeitpunkt <= Date() {
-            return
+    // Setzt den roten Zähler am App-Symbol (0 = verschwindet)
+    func zaehlerSetzen(_ anzahl: Int) async {
+        var wert: Int = anzahl
+        if Einstellungen.geteilt.zaehlerAmSymbol == false {
+            wert = 0
         }
 
-        let inhalt = UNMutableNotificationContent()
-        inhalt.title = "Steward"
+        do {
+            try await UNUserNotificationCenter.current().setBadgeCount(wert)
+        } catch {
+            // ohne Erlaubnis geht es halt nicht - kein Grund, die App zu stören
+        }
+    }
+
+    func hinweisSchicken(titel: String, text: String) {
+        let inhalt: UNMutableNotificationContent = UNMutableNotificationContent()
+        inhalt.title = titel
         inhalt.body = text
         inhalt.sound = .default
 
-        let teile = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: zeitpunkt)
-        let ausloeser = UNCalendarNotificationTrigger(dateMatching: teile, repeats: false)
-
-        let anfrage = UNNotificationRequest(identifier: kennung, content: inhalt, trigger: ausloeser)
+        let anfrage: UNNotificationRequest = UNNotificationRequest(identifier: UUID().uuidString, content: inhalt, trigger: nil)
         UNUserNotificationCenter.current().add(anfrage)
     }
+}
 
-    func erinnerungLoeschen(kennung: String) {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [kennung])
+// Der Blick im Hintergrund: Ungelesen-Zahl holen, Zähler setzen, bei Bedarf einen Hinweis zeigen
+enum Hintergrund {
+    static let kennung: String = "at.lorenz.steward.aktualisieren"
+
+    static func naechstenBlickPlanen() {
+        let anfrage: BGAppRefreshTaskRequest = BGAppRefreshTaskRequest(identifier: kennung)
+        // frühestens in 30 Minuten - iOS macht daraus oft deutlich mehr
+        anfrage.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
+
+        do {
+            try BGTaskScheduler.shared.submit(anfrage)
+        } catch {
+            // passiert z.B. im Simulator oder wenn Hintergrund-Aktualisierung aus ist
+        }
     }
 
-    // Trink-Erinnerung: meldet sich alle X Stunden, wird bei jedem Eintrag neu gesetzt
-    func trinkErinnerungPlanen(inStunden: Int) {
-        trinkErinnerungLoeschen()
+    static func ausfuehren() async {
+        // Gleich den nächsten Blick anmelden, sonst war es der letzte
+        naechstenBlickPlanen()
 
-        let inhalt = UNMutableNotificationContent()
-        inhalt.title = "Trinken nicht vergessen"
-        inhalt.body = "Seit \(inStunden) Stunden nichts eingetragen"
-        inhalt.sound = .default
-
-        let sekunden = Double(inStunden) * 3600.0
-        let ausloeser = UNTimeIntervalNotificationTrigger(timeInterval: sekunden, repeats: false)
-
-        let anfrage = UNNotificationRequest(identifier: "trinken", content: inhalt, trigger: ausloeser)
-        UNUserNotificationCenter.current().add(anfrage)
-    }
-
-    func trinkErinnerungLoeschen() {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["trinken"])
-    }
-
-    // Wandelt den ISO-Text vom Backend in ein Date um
-    func zeitpunktAusText(_ text: String?) -> Date? {
-        guard let text = text else {
-            return nil
+        let ueberblick: ZustandUeberblick
+        do {
+            ueberblick = try await ApiClient.geteilt.holen("/module/zustand")
+        } catch {
+            return
         }
 
-        let mitZone = ISO8601DateFormatter()
-        mitZone.formatOptions = [.withInternetDateTime]
-        if let ergebnis = mitZone.date(from: text) {
-            return ergebnis
+        await Benachrichtigungen.geteilt.zaehlerSetzen(ueberblick.ungelesenGesamt)
+
+        let speicher: UserDefaults = UserDefaults.standard
+        let bisherBekannt: Int = speicher.integer(forKey: "zuletztBekanntUngelesen")
+        speicher.set(ueberblick.ungelesenGesamt, forKey: "zuletztBekanntUngelesen")
+
+        if Einstellungen.geteilt.hintergrundHinweise == false {
+            return
         }
 
-        // das Backend schickt manchmal ohne Zeitzone, dann als lokale Zeit lesen
-        let ohneZone = DateFormatter()
-        ohneZone.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        ohneZone.timeZone = TimeZone.current
-        return ohneZone.date(from: text)
+        if ueberblick.ungelesenGesamt > bisherBekannt {
+            let neu: Int = ueberblick.ungelesenGesamt - bisherBekannt
+            var text: String = String(neu) + " neue Berichte"
+            if neu == 1 {
+                text = "1 neuer Bericht"
+            }
+            Benachrichtigungen.geteilt.hinweisSchicken(titel: "Steward", text: text)
+        }
+
+        if ueberblick.auffaellig.isEmpty == false {
+            var namen: [String] = []
+            for eintrag in ueberblick.auffaellig {
+                namen.append(eintrag.name)
+            }
+            let bisherAuffaellig: String = speicher.string(forKey: "zuletztAuffaellig") ?? ""
+            let jetztAuffaellig: String = namen.joined(separator: ", ")
+            if jetztAuffaellig != bisherAuffaellig {
+                Benachrichtigungen.geteilt.hinweisSchicken(titel: "Steward: Modul mit Fehler", text: jetztAuffaellig)
+            }
+            speicher.set(jetztAuffaellig, forKey: "zuletztAuffaellig")
+        } else {
+            speicher.set("", forKey: "zuletztAuffaellig")
+        }
     }
 }

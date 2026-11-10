@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app import datenbank, planer
+from app import VERSION, datenbank, planer
 from app.config import EINSTELLUNGEN
 from app.dienste.kosten import BudgetErschoepft
 from app.llm.basis import ModellFehler
@@ -35,7 +35,7 @@ else:
 
 anwendung = FastAPI(
     title="Steward",
-    version="2.0",
+    version=VERSION,
     lifespan=lebenslauf,
     docs_url=docs_pfad,
     redoc_url=None,

@@ -1,7 +1,8 @@
 # Baut die iOS-App in der Cloud, damit kein eigener Mac noetig ist
 # Ergebnis ist eine unsignierte .ipa - signiert wird erst beim Installieren durch SideStore
 #
-# Laeuft bei jedem Push auf main und wenn man den Workflow von Hand startet
+# Laeuft bei jedem Push auf main (wenn sich an der App was geaendert hat)
+# und wenn man den Workflow von Hand startet
 # macOS-Runner-Minuten sind bei oeffentlichen Repositories kostenlos
 
 name: iOS Build
@@ -16,11 +17,15 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    # macOS 26 mit Xcode 26 - damit bekommt die App das aktuelle iOS-Design (Liquid Glass)
+    runs-on: macos-26
 
     steps:
       - name: Code holen
         uses: actions/checkout@v4
+
+      - name: Xcode-Version anzeigen
+        run: xcodebuild -version
 
       - name: XcodeGen installieren
         run: brew install xcodegen
@@ -32,6 +37,7 @@ jobs:
       - name: App bauen (ohne Signierung)
         working-directory: ios
         run: |
+          set -o pipefail
           xcodebuild \
             -project Steward.xcodeproj \
             -scheme Steward \
@@ -42,7 +48,19 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=NO \
-            build
+            build 2>&1 | tee build.log
+
+      # Bei Fehlern nur die Fehlerzeilen zusammenfassen - die tauchen dann oben in der
+      # Zusammenfassung des Laufs auf und sind auch ohne Login lesbar
+      - name: Fehler zusammenfassen
+        if: failure()
+        working-directory: ios
+        run: |
+          echo "## Compiler-Fehler" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "error:|warning: unreachable" build.log | sed "s|$GITHUB_WORKSPACE/||" | sort -u | head -80 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "error:" build.log | sed "s|$GITHUB_WORKSPACE/||" | sort -u | head -40 | while read -r zeile; do echo "::error::$zeile"; done || true
 
       - name: IPA packen
         working-directory: ios

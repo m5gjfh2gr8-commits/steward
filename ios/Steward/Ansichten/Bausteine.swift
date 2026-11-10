@@ -1,108 +1,174 @@
 import SwiftUI
 
-// Kleine Teile, die in mehreren Ansichten vorkommen
+// Kleine Bausteine, die mehrere Bildschirme gemeinsam verwenden
 
-struct FortschrittsBalken: View {
-    let titel: String
-    let aktuell: Double
-    let ziel: Double
-    let einheit: String
-    let farbe: Color
-
-    private var anteil: Double {
-        if ziel <= 0 {
-            return 0
-        }
-        let roh = aktuell / ziel
-        if roh > 1 {
-            return 1
-        }
-        return roh
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(titel)
-                    .font(.subheadline)
-                Spacer()
-                Text("\(Int(aktuell)) / \(Int(ziel)) \(einheit)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            ProgressView(value: anteil)
-                .tint(farbe)
-        }
-    }
-}
-
-struct LadeAnzeige: View {
-    let text: String
-
+// Hinweis-Leiste oben, wenn der Server nicht antwortet - die alten Daten bleiben darunter sichtbar
+struct OfflineHinweis: View {
     var body: some View {
         HStack(spacing: 8) {
-            ProgressView()
-            Text(text)
-                .foregroundStyle(.secondary)
+            Image(systemName: "wifi.slash")
+            Text("Steward nicht erreichbar – Tailscale an?")
         }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .padding()
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .padding(.top, 4)
+        .accessibilityElement(children: .combine)
     }
 }
 
-struct FehlerKarte: View {
+// Blauer Kreis mit Zahl, wie bei Mail oder Nachrichten
+struct UngelesenZaehler: View {
+    let anzahl: Int
+
+    var body: some View {
+        Text(String(anzahl))
+            .font(.subheadline.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .frame(minWidth: 22, minHeight: 22)
+            .background(Capsule().fill(.tint))
+            .accessibilityLabel(String(anzahl) + " neu")
+    }
+}
+
+// Punkt + Wort für den Zustand eines Moduls
+struct ZustandsAnzeige: View {
+    let zustand: String
+
+    private var farbe: Color {
+        switch zustand {
+        case "ok":
+            return Color.green
+        case "wackelig":
+            return Color.orange
+        case "kaputt":
+            return Color.red
+        default:
+            return Color.secondary
+        }
+    }
+
+    private var wort: String {
+        switch zustand {
+        case "ok":
+            return "OK"
+        case "wackelig":
+            return "Fehler"
+        case "kaputt":
+            return "Mehrfach fehlgeschlagen"
+        case "neu":
+            return "Noch nicht gelaufen"
+        default:
+            return zustand
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(farbe)
+                .frame(width: 8, height: 8)
+            Text(wort)
+                .fontWeight(.medium)
+                .foregroundStyle(farbe)
+        }
+    }
+}
+
+// Eine Kennzahl als Kachel im Bericht: Bezeichnung klein, Wert groß
+struct KennzahlKachel: View {
+    let kennzahl: Kennzahl
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(kennzahl.name)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text(kennzahl.wert)
+                .font(.title2.weight(.semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// Kleine graue Überschrift über einem Block, wie "KENNZAHLEN" in den iOS-Einstellungen
+struct AbschnittsTitel: View {
     let text: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
-            Text(text)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 8)
     }
 }
 
-struct NichtEingerichtetHinweis: View {
+// Ergebnis von "Verbindung testen" - grünes Häkchen oder rotes X
+enum TestErgebnis {
+    case keins
+    case laeuft
+    case ok(String)
+    case fehler(String)
+}
+
+struct TestErgebnisAnzeige: View {
+    let ergebnis: TestErgebnis
+
     var body: some View {
-        ContentUnavailableView {
-            Label("Noch nicht verbunden", systemImage: "network.slash")
-        } description: {
-            Text("Trag in den Einstellungen die Server-Adresse und den API-Key ein.")
+        switch ergebnis {
+        case .keins:
+            EmptyView()
+        case .laeuft:
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Teste Verbindung …")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.footnote)
+        case .ok(let version):
+            Label {
+                Text("Verbindung steht · Server " + version)
+                    .foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: "checkmark")
+                    .fontWeight(.bold)
+                    .foregroundStyle(.green)
+            }
+            .font(.footnote)
+        case .fehler(let text):
+            Label {
+                Text("Keine Verbindung: " + text)
+                    .foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: "xmark")
+                    .fontWeight(.bold)
+                    .foregroundStyle(.red)
+            }
+            .font(.footnote)
         }
     }
 }
 
-// Macht aus "2026-09-14T15:30:00" ein "15:30"
-func uhrzeitAusText(_ text: String) -> String {
-    if text.count < 16 {
-        return ""
+// Führt den Verbindungstest aus und liefert das Ergebnis für die Anzeige
+func verbindungPruefen() async -> TestErgebnis {
+    do {
+        let version: String = try await ApiClient.geteilt.verbindungTesten()
+        return TestErgebnis.ok(version)
+    } catch {
+        return TestErgebnis.fehler(error.localizedDescription)
     }
-    let start = text.index(text.startIndex, offsetBy: 11)
-    let ende = text.index(text.startIndex, offsetBy: 16)
-    return String(text[start..<ende])
-}
-
-// Macht aus "2026-09-14T15:30:00" ein "14.09. 15:30"
-func datumUndZeitAusText(_ text: String?) -> String {
-    guard let text = text else {
-        return ""
-    }
-    if text.count < 16 {
-        return text
-    }
-
-    let jahrStart = text.index(text.startIndex, offsetBy: 0)
-    let tagTeil = text.index(text.startIndex, offsetBy: 10)
-    let datumsteil = String(text[jahrStart..<tagTeil])
-
-    let teile = datumsteil.split(separator: "-")
-    if teile.count != 3 {
-        return text
-    }
-
-    return "\(teile[2]).\(teile[1]). " + uhrzeitAusText(text)
 }

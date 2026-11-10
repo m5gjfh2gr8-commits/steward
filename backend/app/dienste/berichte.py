@@ -229,6 +229,7 @@ def zustand_von_modul(modul):
         "name": modul.name,
         "anzeigename": modul.anzeigename,
         "beschreibung": modul.beschreibung,
+        "symbol": modul.symbol,
         "zeitplan": modul.zeitplan,
         "braucht_modell": modul.braucht_modell,
         "zustand": zustand,

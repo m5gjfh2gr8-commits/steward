@@ -1,34 +1,42 @@
 import SwiftUI
 
+// Die Tab-Leiste unten mit den fünf Bereichen
+// Jeder Tab hat seinen eigenen Navigationsstapel, damit "Zurück" pro Tab funktioniert
+
 struct HauptAnsicht: View {
-    @EnvironmentObject var einstellungen: Einstellungen
+    @EnvironmentObject var daten: AppDaten
 
     var body: some View {
-        TabView {
-            DashboardAnsicht()
+        TabView(selection: $daten.ausgewaehlterBereich) {
+            ModuleAnsicht()
                 .tabItem {
-                    Label("Heute", systemImage: "sun.horizon")
+                    Label("Module", systemImage: "square.grid.2x2")
                 }
+                .tag(Bereich.module)
 
-            ChatAnsicht()
+            TodosAnsicht()
                 .tabItem {
-                    Label("Eingabe", systemImage: "text.bubble")
+                    Label("Todos", systemImage: "checklist")
                 }
+                .tag(Bereich.todos)
 
-            TodoAnsicht()
+            StewardAnsicht()
                 .tabItem {
-                    Label("Aufgaben", systemImage: "checklist")
+                    Label("Steward", systemImage: "bubble.left.and.text.bubble.right")
                 }
+                .tag(Bereich.steward)
 
-            ErnaehrungAnsicht()
+            KostenAnsicht()
                 .tabItem {
-                    Label("Ernaehrung", systemImage: "fork.knife")
+                    Label("Kosten", systemImage: "chart.bar")
                 }
+                .tag(Bereich.kosten)
 
             EinstellungenAnsicht()
                 .tabItem {
                     Label("Einstellungen", systemImage: "gearshape")
                 }
+                .tag(Bereich.einstellungen)
         }
     }
 }
