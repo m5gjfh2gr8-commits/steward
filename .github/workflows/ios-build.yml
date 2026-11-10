@@ -18,7 +18,9 @@ on:
 jobs:
   build:
     # macOS 26 mit Xcode 26 - damit bekommt die App das aktuelle iOS-Design (Liquid Glass)
-    runs-on: macos-26
+    # Intel statt Apple-Chip: die arm64-Rechner waren bei GitHub so ausgelastet, dass der
+    # Lauf nach 15 Minuten Warten abgebrochen wurde. Fuer einen Build ist Intel genauso gut
+    runs-on: macos-26-intel
 
     steps:
       - name: Code holen
