@@ -6,11 +6,11 @@
 #   sudo chown steward:steward /opt/steward/daten
 #   sudo cp .env.example /etc/steward/steward.env     # dann ausfuellen
 #   -> darin STEWARD_DB_PFAD=/opt/steward/daten/steward.db setzen
-#   -> und unten bei ExecStart die eigene Tailscale-IP eintragen (tailscale ip -4)
 #   sudo chown root:steward /etc/steward/steward.env
 #   sudo chmod 640 /etc/steward/steward.env
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now steward
+#   sudo tailscale serve --bg 8000                    # HTTPS ins Tailnet, siehe docs/SETUP.md
 #
 # Nachschauen:  sudo systemctl status steward
 # Logs:         journalctl -u steward -f
@@ -29,11 +29,10 @@ WorkingDirectory=/opt/steward/backend
 # Der API-Key und der Anthropic-Key liegen hier, nicht im Projektordner
 EnvironmentFile=/etc/steward/steward.env
 
-# Nur ueber Tailscale erreichbar - eigene Tailnet-IP eintragen (tailscale ip -4),
-# dann hoert der Dienst nicht im Heim-WLAN mit
-# Der Platzhalter ist absichtlich kein gueltiger Wert: so scheitert der Start mit
-# klarer Meldung, statt still auf der falschen Adresse zu lauschen
-ExecStart=/opt/steward/backend/.venv/bin/uvicorn app.main:anwendung --host TAILSCALE-IP-EINSETZEN --port 8000
+# Lauscht nur am Server selbst (127.0.0.1), nicht im Heim-WLAN und nicht direkt im Tailnet
+# Von aussen kommt man nur ueber "tailscale serve" hin: das macht HTTPS mit einem
+# echten Zertifikat (braucht iOS) und leitet an 127.0.0.1:8000 weiter
+ExecStart=/opt/steward/backend/.venv/bin/uvicorn app.main:anwendung --host 127.0.0.1 --port 8000
 
 Restart=always
 RestartSec=5

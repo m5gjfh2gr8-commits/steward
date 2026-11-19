@@ -1,6 +1,6 @@
 # Steward am Server aufsetzen
 
-Stand 2026-10-20. Gilt für das **Grundgerüst** — Mail, Kalender und Fitness sind
+Stand 2026-11-19. Gilt für das **Grundgerüst** — Mail, Kalender und Fitness sind
 gestrichen, dafür ist nichts einzurichten.
 
 Was hier steht, kann keine KI für dich machen: Hardware aufsetzen, Accounts anlegen,
@@ -62,13 +62,11 @@ privat kostenlos). Dann:
 2. Tailscale auch am Windows-PC installieren
 3. Im Admin-Panel für den Server **„Disable key expiry"** setzen — sonst läuft der
    Schlüssel irgendwann ab und Steward ist ohne Vorwarnung weg
-4. Eigene IP merken:
-
-```bash
-tailscale ip -4
-```
-
-Die brauchst du in Abschnitt 5. Sieht aus wie `100.x.y.z`.
+4. Im Admin-Panel unter **Machines** dem Server einen **neutralen Namen** geben
+   (z. B. `heimserver`). Der Name landet mit dem HTTPS-Zertifikat in öffentlichen
+   Zertifikats-Verzeichnissen — also kein Nachname, nichts Persönliches
+5. Im Admin-Panel unter **DNS**: **MagicDNS** an, bei **HTTPS Certificates** auf
+   **Enable HTTPS**
 
 **Test:** Vom iPhone aus den Server in der Tailscale-App anpingen.
 
@@ -177,32 +175,41 @@ sudo -u steward bash -c 'set -a; . /etc/steward/steward.env; set +a; .venv/bin/p
 
 ```bash
 sudo cp /opt/steward/backend/steward.service /etc/systemd/system/
-sudo nano /etc/systemd/system/steward.service
-```
-
-**Zwei Zeilen anpassen:**
-
-- Bei `ExecStart` den Platzhalter `TAILSCALE-IP-EINSETZEN` durch deine IP aus
-  Abschnitt 2 ersetzen. Der Platzhalter ist absichtlich ungültig — so scheitert der
-  Start mit klarer Meldung, statt still auf der falschen Adresse zu lauschen
-- `User=` und `Group=` müssen auf `steward` stehen
-
-Dann:
-
-```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now steward
 sudo systemctl status steward
 ```
 
+Steward lauscht nur am Server selbst (`127.0.0.1:8000`). Nach außen bringt ihn
+Tailscale, mit HTTPS und echtem Zertifikat — das braucht iOS, sonst blockiert es die
+Verbindung:
+
+```bash
+sudo tailscale serve --bg 8000
+tailscale serve status
+```
+
+Beim ersten Mal kann statt dessen „Serve is not enabled on your tailnet" mit einem
+Link kommen: den Link am PC öffnen, bestätigen, Befehl noch einmal. `--bg` heißt: läuft
+dauerhaft und kommt nach einem Neustart von selbst wieder.
+
+`serve status` zeigt die Adresse, z. B. `https://heimserver.tailXXXX.ts.net`.
+
 **Test:**
 
 ```bash
-curl http://$(tailscale ip -4):8000/health
+curl http://127.0.0.1:8000/health
 ```
 
 Muss `{"status":"ok",...}` liefern. Dann neu starten (`sudo reboot`) und denselben
 Befehl noch einmal — Steward muss von selbst wieder da sein.
+
+Ein Modul von Hand starten (praktisch zum Testen):
+
+```bash
+KEY=$(sudo grep STEWARD_API_KEY /etc/steward/steward.env | cut -d= -f2)
+curl -s -X POST -H "X-API-Key: $KEY" http://127.0.0.1:8000/module/systemcheck/lauf
+```
 
 Logs mitlesen, wenn etwas nicht geht:
 
@@ -215,8 +222,13 @@ journalctl -u steward -f
 ## 6. Absichern
 
 Jetzt die Prüfliste [SICHERHEIT.md](SICHERHEIT.md) durchgehen — Firewall, SSH,
-automatische Updates, Backup. Dauert eine halbe Stunde und ist der Teil, den man
+automatische Updates. Dauert eine halbe Stunde und ist der Teil, den man
 sonst „später" macht und dann nie.
+
+Dazu das nächtliche Backup: Anleitung in [server/backup/LIESMICH.md](../server/backup/LIESMICH.md).
+Und im BIOS „After Power Loss" (heisst je nach Hersteller auch „Restore on AC Power
+Loss" o. ä.) auf **Power On** stellen, ErP/EuP aus — dann fährt der Server nach einem
+Stromausfall von selbst wieder hoch.
 
 Das Wichtigste in zwei Befehlen:
 
@@ -230,14 +242,17 @@ sudo ufw enable
 
 ## 7. Erster Blick vom PC
 
-Am Windows-PC im Browser (Tailscale muss laufen):
+Am Windows-PC im Browser (Tailscale muss laufen) die Adresse aus `tailscale serve status`:
 
 ```
-http://100.x.y.z:8000/
+https://heimserver.tailXXXX.ts.net/
 ```
 
 Du landest auf der Anmeldeseite, gibst den `STEWARD_API_KEY` ein, und siehst danach
-den Systemcheck mit seinem letzten Bericht. Die Seite hat bewusst noch kein Design.
+die Module mit ihrem letzten Bericht. Die Seite hat bewusst noch kein Design.
+
+Am iPhone geht dasselbe in Safari (Tailscale-App an). Mit **Teilen → Zum
+Home-Bildschirm** wird daraus ein Symbol wie bei einer App.
 
 **Test:** Der Systemcheck zeigt „letzter Erfolg" und „nächster Lauf". Nach einer
 Stunde ist ein zweiter Bericht da, ohne dass du etwas getan hast — dann arbeitet der
@@ -255,13 +270,14 @@ Tagesaktuell-Modul kommt — jetzt schon möglich, nicht nötig.
 
 ## Was noch nicht dran ist
 
-- **Die inhaltlichen Module** (Tagesaktuelles, Gelegenheiten, Finanzbot) sind noch
-  nicht gebaut. Bis dahin berichtet nur der Systemcheck
-- **Die iOS-App** muss auf die Modul-Darstellung umgebaut werden. Abschnitte zum
-  App-Bauen (GitHub Actions, SideStore) kommen in diese Anleitung, wenn das dran ist
-- **iOS und HTTPS**: iOS blockiert einfaches `http://`. Bevor die App dran ist,
-  brauchst du ein Tailscale-Zertifikat oder eine ATS-Ausnahme — siehe SICHERHEIT.md
-  Abschnitt 9
+- **Module**: Systemcheck und Tradingbot laufen. Tagesaktuelles und Gelegenheiten
+  sind noch nicht gebaut
+- **Tradingbot**: eigenes Projekt unter `/opt/trading-bot` (Benutzer `tradingbot`,
+  Dienst `tradingbot`). Er schreibt alle 15 Minuten `data/steward_status.json`, das
+  Steward-Modul liest nur diese Datei. Anderer Ort: `STEWARD_TRADINGBOT_STATUS` in
+  `/etc/steward/steward.env`
+- **Die iOS-App**: Abschnitte zum App-Bauen (GitHub Actions, SideStore) kommen in
+  diese Anleitung, wenn das dran ist
 
 ---
 
@@ -269,11 +285,12 @@ Tagesaktuell-Modul kommt — jetzt schon möglich, nicht nötig.
 
 | Symptom | Wahrscheinliche Ursache |
 |---|---|
-| Dienst startet nicht, Log sagt „error while attempting to bind" | Platzhalter-IP in `ExecStart` nicht ersetzt, oder falsche Tailscale-IP |
+| Dienst startet nicht, Log sagt „error while attempting to bind" | Port 8000 schon belegt (`sudo ss -ltnp \| grep 8000`) |
 | Dienst startet nicht, Log sagt „unable to open database file" | `STEWARD_DB_PFAD` ist relativ oder zeigt nicht nach `/opt/steward/daten` |
 | Selbsttest: „Paket für claude fehlt" | `pip install -r requirements.txt` im venv vergessen |
 | Selbsttest: „STEWARD_API_KEY ist nicht gesetzt" | Dienst liest `/etc/steward/steward.env` — Datei leer oder falscher Pfad in der Unit |
-| `/health` antwortet nicht von außen | Tailscale am anderen Gerät aus, oder uvicorn auf der falschen IP |
+| `https://…ts.net` antwortet nicht | Tailscale am anderen Gerät aus, oder `tailscale serve status` zeigt „No serve config" → `sudo tailscale serve --bg 8000` |
+| Tradingbot-Modul rot: „Keine Statusdatei" / „meldet sich nicht mehr" | `systemctl status tradingbot`, Log: `journalctl -u tradingbot -f` |
 | Browser zeigt „Key passt nicht" | Key in der Unit-Umgebung und Eingabe unterscheiden sich — auf Leerzeichen am Ende achten |
 
 Logs: `journalctl -u steward -f`

@@ -17,8 +17,9 @@ sudo ufw enable
 sudo ufw status verbose
 ```
 
-- [ ] uvicorn an die Tailscale-IP binden, nicht an `0.0.0.0`. IP herausfinden mit
-      `tailscale ip -4`, dann in `steward.service` bei `ExecStart` eintragen
+- [ ] uvicorn nur an `127.0.0.1` binden, nie an `0.0.0.0` (steht so in `steward.service`).
+      Nach außen nur über `tailscale serve` — das ist nur im eigenen Tailnet erreichbar,
+      **nicht** `tailscale funnel` verwenden (das wäre öffentlich im Internet)
 
 ## 2. Tailscale
 
@@ -26,6 +27,8 @@ sudo ufw status verbose
       Schlüssel nach einigen Monaten ab, Steward ist plötzlich weg, und du suchst
       den Fehler im Code
 - [ ] iPhone und PC im selben Tailnet
+- [ ] Maschinenname ohne persönliche Daten (landet mit dem HTTPS-Zertifikat in
+      öffentlichen Zertifikats-Logs)
 
 ## 3. Schlüssel
 
@@ -79,24 +82,19 @@ Schlimmste ein blöder Bericht.
 
 ## 8. Backup
 
-- [ ] Datenbank täglich sichern, auf eine andere Platte oder zum PC
+- [ ] Nächtliches Backup eingerichtet: [server/backup/LIESMICH.md](../server/backup/LIESMICH.md)
+- [ ] Ab und zu eine Kopie auf den PC holen (nicht in OneDrive/iCloud — enthält Keys)
+- [ ] BIOS: nach Stromausfall automatisch einschalten
 
-```bash
-# in die crontab von root: sudo crontab -e
-30 3 * * * sqlite3 /opt/steward/daten/steward.db ".backup '/pfad/zum/backup/steward-$(date +\%F).db'"
-```
-
-Ein alter PC stirbt irgendwann. Die Berichte und Todos sind dann weg.
+Ein alter PC stirbt irgendwann. Ohne Kopie woanders sind Berichte, Todos und der
+Verlauf der Testphase des Tradingbots dann weg.
 
 ## 9. iOS und HTTPS
 
-iOS blockiert einfaches `http://` standardmäßig (App Transport Security). Zwei Wege,
-einen davon brauchst du:
-
-- **Tailscale-Zertifikat** (sauberer): `sudo tailscale cert <name>.<tailnet>.ts.net`,
-  dann ruft die App `https://…` auf
-- **ATS-Ausnahme** in der `Info.plist` der App für genau diese Domain (schneller,
-  aber leicht zu vergessen)
+iOS blockiert einfaches `http://` standardmäßig (App Transport Security). Gelöst mit
+`tailscale serve` (siehe SETUP.md Abschnitt 5): Tailscale holt das Zertifikat selbst
+und erneuert es, die App ruft `https://heimserver.tailXXXX.ts.net` auf. Keine
+ATS-Ausnahme nötig.
 
 Verschlüsselt ist der Verkehr übrigens sowieso — Tailscale ist WireGuard. HTTPS
 brauchst du nicht für die Sicherheit, sondern weil iOS darauf besteht.
@@ -104,4 +102,4 @@ brauchst du nicht für die Sicherheit, sondern weil iOS darauf besteht.
 ## 10. Am iPhone
 
 - [ ] Der Steward-Key gehört in die **Keychain**, nicht in `UserDefaults`
-      (steht noch offen, kommt beim App-Umbau)
+      (umgesetzt in `Dienste/Schluesselbund.swift`)
