@@ -5,10 +5,11 @@ Hier und nur hier wird ein neues Modul eingetragen. Der Planer, die API und die 
 holen sich die Liste von hier, es gibt also keine zweite Stelle zum Nachpflegen
 """
 
-from app.bots import systemcheck
+from app.bots import systemcheck, tradingbot
 
 MODULE = [
     systemcheck.SystemCheck(),
+    tradingbot.Tradingbot(),
 ]
 
 

@@ -62,6 +62,9 @@ class Einstellungen:
         self.tokenbudget_pro_tag = zahl_aus_umgebung("STEWARD_TOKENBUDGET_PRO_TAG", 2000000)
         self.tokenbudget_pro_lauf = zahl_aus_umgebung("STEWARD_TOKENBUDGET_PRO_LAUF", 200000)
 
+        # Statusdatei, die der Tradingbot (eigenes Projekt am selben Server) alle 15 Minuten schreibt
+        self.tradingbot_status_pfad = text_aus_umgebung("STEWARD_TRADINGBOT_STATUS", "/opt/trading-bot/data/steward_status.json")
+
         # Planer abdrehbar, praktisch zum Entwickeln
         self.planer_an = schalter_aus_umgebung("STEWARD_PLANER_AN", True)
 
