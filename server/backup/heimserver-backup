@@ -1,0 +1,78 @@
+#!/bin/bash
+# Tägliches Backup vom Heimserver: Steward und Tradingbot
+#
+# Was gesichert wird:
+#   - die beiden Datenbanken (sicher kopiert, auch während die Dienste laufen)
+#   - die Konfiguration inkl. .env-Dateien mit den Keys
+#   - die Berichte des Tradingbots
+#
+# Wohin: /var/backups/heimserver/heimserver-JJJJ-MM-TT.tar.gz, die letzten 14 Tage bleiben
+# Lesbar nur für root und den Benutzer unten (für scp auf den PC)
+#
+# Installation und Wiederherstellen: server/backup/LIESMICH.md
+
+set -euo pipefail
+
+ZIEL="${HEIMSERVER_BACKUP_ZIEL:-/var/backups/heimserver}"
+BENUTZER="${HEIMSERVER_BACKUP_BENUTZER:-lorenz}"
+AUFHEBEN_TAGE=14
+
+STEWARD_DB="${STEWARD_DB:-/opt/steward/daten/steward.db}"
+STEWARD_ENV="${STEWARD_ENV:-/etc/steward/steward.env}"
+BOT_ORDNER="${BOT_ORDNER:-/opt/trading-bot}"
+
+TAG=$(date +%F)
+ARBEIT=$(mktemp -d)
+trap 'rm -rf "$ARBEIT"' EXIT
+
+# SQLite über die Backup-Funktion kopieren statt mit cp,
+# sonst kann die Kopie mitten in einem Schreibvorgang landen
+sqlite_kopie() {
+    python3 - "$1" "$2" <<'PY'
+import sqlite3
+import sys
+
+quelle = sqlite3.connect(sys.argv[1])
+ziel = sqlite3.connect(sys.argv[2])
+quelle.backup(ziel)
+ziel.close()
+quelle.close()
+PY
+}
+
+mkdir -p "$ARBEIT/heimserver-$TAG"
+INHALT="$ARBEIT/heimserver-$TAG"
+
+if [ -f "$STEWARD_DB" ]; then
+    sqlite_kopie "$STEWARD_DB" "$INHALT/steward.db"
+else
+    echo "WARNUNG: $STEWARD_DB fehlt" >&2
+fi
+
+if [ -f "$BOT_ORDNER/data/bot.sqlite3" ]; then
+    sqlite_kopie "$BOT_ORDNER/data/bot.sqlite3" "$INHALT/tradingbot.sqlite3"
+else
+    echo "WARNUNG: $BOT_ORDNER/data/bot.sqlite3 fehlt" >&2
+fi
+
+[ -f "$STEWARD_ENV" ] && cp "$STEWARD_ENV" "$INHALT/steward.env"
+[ -f "$BOT_ORDNER/.env" ] && cp "$BOT_ORDNER/.env" "$INHALT/tradingbot.env"
+[ -f "$BOT_ORDNER/config.yaml" ] && cp "$BOT_ORDNER/config.yaml" "$INHALT/tradingbot-config.yaml"
+[ -d "$BOT_ORDNER/data/reports" ] && cp -r "$BOT_ORDNER/data/reports" "$INHALT/tradingbot-reports"
+
+# Archiv schreiben, Rechte sofort eng setzen (enthält die Keys)
+mkdir -p "$ZIEL"
+chmod 750 "$ZIEL"
+umask 077
+ARCHIV="$ZIEL/heimserver-$TAG.tar.gz"
+tar -czf "$ARCHIV.tmp" -C "$ARBEIT" "heimserver-$TAG"
+mv "$ARCHIV.tmp" "$ARCHIV"
+chmod 640 "$ARCHIV"
+if id "$BENUTZER" >/dev/null 2>&1; then
+    chgrp "$BENUTZER" "$ZIEL" "$ARCHIV"
+fi
+
+# alte Backups wegräumen
+find "$ZIEL" -maxdepth 1 -name 'heimserver-*.tar.gz' -mtime +"$AUFHEBEN_TAGE" -delete
+
+echo "Backup fertig: $ARCHIV ($(du -h "$ARCHIV" | cut -f1))"

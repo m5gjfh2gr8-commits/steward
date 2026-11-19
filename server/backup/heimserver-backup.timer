@@ -1,0 +1,13 @@
+# Startet das Backup jede Nacht um 3:30
+# Persistent=true: war der Server um 3:30 aus, läuft das Backup gleich nach dem Hochfahren
+
+[Unit]
+Description=Heimserver-Backup jede Nacht
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

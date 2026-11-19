@@ -1,0 +1,12 @@
+# Einmal-Lauf des Backups, gestartet vom Timer (heimserver-backup.timer)
+# Installation: server/backup/LIESMICH.md
+
+[Unit]
+Description=Heimserver-Backup (Steward + Tradingbot)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/heimserver-backup
+# im Hintergrund, damit Bot und Steward nicht gebremst werden
+Nice=10
+IOSchedulingClass=idle
